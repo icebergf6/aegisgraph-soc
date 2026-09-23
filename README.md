@@ -138,7 +138,15 @@ Open your browser and navigate to:
 http://127.0.0.1:8000/
 ```
 
-### 3. Execute Automated Test Suite (Pytest)
+### 3. (Optional) Run the Real-Time Host Sensor
+To stream live processes and outbound network connections directly from your host PC into the SOC console:
+```powershell
+# In a separate terminal window:
+python agent/live_collector.py
+```
+> **Real-Time Detection:** Any process spawned or network socket opened on your computer will be ingested, evaluated against Sigma rules, and correlated in the live Cytoscape attack canvas.
+
+### 4. Execute Automated Test Suite (Pytest)
 ```powershell
 $env:PYTHONPATH="."
 python -m pytest backend/tests/ -v

@@ -108,3 +108,45 @@ def test_dynamic_soar_execution():
     assert incident.containment_status == "CONTAINED"
     # Verify dynamic host extraction
     assert any("PROD-DB-09" in a.execution_log for a in result.actions)
+
+def test_realtime_telemetry_api_ingestion():
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    client = TestClient(app)
+
+    # 1. Test Process Telemetry Ingestion (Live Sensor Payload)
+    proc_payload = {
+        "host_name": "WIN11-ANALYST",
+        "host_ip": "10.0.0.55",
+        "user_name": "analyst",
+        "process_id": 9991,
+        "process_guid": "proc-test-9991",
+        "process_name": "powershell.exe",
+        "process_path": "C:\\Windows\\System32\\powershell.exe",
+        "command_line": "powershell.exe -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBi...",
+        "hashes": {"sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+    }
+    resp = client.post("/api/v1/telemetry/process", json=proc_payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "INGESTED"
+    assert data["alerts_triggered"] >= 1
+    assert data["incident"] is not None
+
+    # 2. Test Network Telemetry Ingestion
+    net_payload = {
+        "host_name": "WIN11-ANALYST",
+        "process_id": 9991,
+        "process_guid": "proc-test-9991",
+        "process_name": "powershell.exe",
+        "source_ip": "10.0.0.55",
+        "source_port": 49152,
+        "dest_ip": "185.220.101.5",
+        "dest_port": 443,
+        "protocol": "TCP"
+    }
+    net_resp = client.post("/api/v1/telemetry/network", json=net_payload)
+    assert net_resp.status_code == 200
+    net_data = net_resp.json()
+    assert net_data["status"] == "INGESTED"
+    assert net_data["alerts_triggered"] >= 1

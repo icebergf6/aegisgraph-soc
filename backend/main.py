@@ -24,8 +24,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API Router
+# Include API Router (both /api and /api/v1 for standard enterprise versioning)
 app.include_router(api_router, prefix="/api")
+app.include_router(api_router, prefix="/api/v1")
 
 # Mount Static Frontend
 frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")

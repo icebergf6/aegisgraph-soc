@@ -435,6 +435,84 @@ def ingest_custom_event(req: IngestCustomEventRequest):
         "incident_created": incident
     }
 
+@router.post("/telemetry/process")
+def ingest_process_telemetry(proc: ProcessTelemetry):
+    """Real-time process telemetry ingestion endpoint for endpoint agents."""
+    soc_state.telemetry_count += 1
+    soc_state.correlator.add_process(proc)
+    soc_state.all_events.append({
+        "type": "PROCESS",
+        "host": proc.host_name,
+        "detail": f"{proc.process_name} (PID: {proc.process_id}) - {proc.command_line[:120]}",
+        "timestamp": proc.timestamp
+    })
+    alerts = soc_state.detector.evaluate_process(proc)
+    for a in alerts:
+        soc_state.correlator.associate_alert(a)
+        soc_state.all_alerts.append(a)
+    incident = None
+    if alerts:
+        incident = soc_state.correlator.correlate_incident(alerts[0])
+    return {
+        "status": "INGESTED",
+        "event_id": proc.event_id,
+        "alerts_triggered": len(alerts),
+        "alerts": alerts,
+        "incident": incident
+    }
+
+@router.post("/telemetry/network")
+def ingest_network_telemetry(net: NetworkTelemetry):
+    """Real-time network telemetry ingestion endpoint for IDS/EDR network monitors."""
+    soc_state.telemetry_count += 1
+    soc_state.correlator.add_network(net)
+    soc_state.all_events.append({
+        "type": "NETWORK",
+        "host": net.host_name,
+        "detail": f"{net.process_name} -> {net.dest_ip}:{net.dest_port} ({net.protocol})",
+        "timestamp": net.timestamp
+    })
+    alerts = soc_state.detector.evaluate_network(net)
+    for a in alerts:
+        soc_state.correlator.associate_alert(a)
+        soc_state.all_alerts.append(a)
+    incident = None
+    if alerts:
+        incident = soc_state.correlator.correlate_incident(alerts[0])
+    return {
+        "status": "INGESTED",
+        "event_id": net.event_id,
+        "alerts_triggered": len(alerts),
+        "alerts": alerts,
+        "incident": incident
+    }
+
+@router.post("/telemetry/file")
+def ingest_file_telemetry(f: FileTelemetry):
+    """Real-time file telemetry ingestion endpoint for ransomware file integrity monitors."""
+    soc_state.telemetry_count += 1
+    soc_state.correlator.add_file(f)
+    soc_state.all_events.append({
+        "type": "FILE",
+        "host": f.host_name,
+        "detail": f"{f.action} on {f.file_path}",
+        "timestamp": f.timestamp
+    })
+    alerts = soc_state.detector.evaluate_file(f)
+    for a in alerts:
+        soc_state.correlator.associate_alert(a)
+        soc_state.all_alerts.append(a)
+    incident = None
+    if alerts:
+        incident = soc_state.correlator.correlate_incident(alerts[0])
+    return {
+        "status": "INGESTED",
+        "event_id": f.event_id,
+        "alerts_triggered": len(alerts),
+        "alerts": alerts,
+        "incident": incident
+    }
+
 @router.post("/simulator/launch")
 def launch_simulation(req: SimulationRequest):
     if req.scenario == "ransomware":
