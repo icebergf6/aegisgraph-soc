@@ -1,0 +1,17 @@
+title: Mass File Renaming to Known Ransomware Extension
+id: SIGMA-005
+status: production
+description: Detects rapid file modification or creation of known ransomware encrypted extensions or ransom notes.
+level: CRITICAL
+tags:
+  - attack.impact
+  - attack.t1486
+logsource:
+  category: file_modification
+detection:
+  selection:
+    file_path:
+      - ".locked"
+      - ".crypt"
+      - "readme_restore_files.txt"
+      - ".lockbit"

@@ -1,0 +1,18 @@
+title: LSASS Memory Dumping via Procdump or Comsvcs
+id: SIGMA-003
+status: production
+description: Detects memory dumping of lsass.exe process for offline credential theft.
+level: CRITICAL
+tags:
+  - attack.credential_access
+  - attack.t1003.001
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    command_line:
+      - "minidump"
+      - "lsass"
+      - "comsvcs.dll"
+      - "procdump"

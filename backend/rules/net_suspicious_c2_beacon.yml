@@ -1,0 +1,16 @@
+title: Known Tor Exit Node or Malicious C2 IP Connection
+id: SIGMA-004
+status: production
+description: Detects outbound network connection to suspicious adversary infrastructure or C2 ports.
+level: HIGH
+tags:
+  - attack.command_and_control
+  - attack.t1071.001
+logsource:
+  category: network_connection
+detection:
+  selection:
+    dest_ip:
+      - "185.220.101.5"
+      - "45.154.255.88"
+      - "194.26.29.11"

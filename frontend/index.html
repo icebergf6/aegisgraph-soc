@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AegisGraph-SOC | Next-Gen Graph SIEM &amp; Autonomous SOAR Engine</title>
+  <meta name="description" content="Next-Generation Enterprise SOC Platform featuring Graph-Based Multi-Hop Attack Path Correlation, MITRE ATT&amp;CK Kill-Chain Mapping, Threat Intelligence, and Autonomous SOAR Playbooks.">
+  
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- Bootstrap 5.3.3 CSS & Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  
+  <!-- Cytoscape.js for Attack Path Graph Visualization -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+
+  <!-- Custom Cyber SOC Theme Extensions -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header>
+    <nav class="navbar navbar-expand-xl soc-navbar sticky-top px-3 py-2">
+      <div class="container-fluid">
+        <!-- Brand -->
+        <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+          <span class="p-2 rounded bg-primary text-black fw-bold d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+            <i class="bi bi-shield-lock-fill fs-5 text-dark"></i>
+          </span>
+          <div>
+            <div class="fw-bold fs-6 text-white d-flex align-items-center gap-2">
+              AegisGraph-SOC <span class="badge brand-badge">ENTERPRISE v1.0</span>
+            </div>
+            <div class="text-secondary small font-monospace" style="font-size: 0.68rem;">GRAPH CORRELATION // THREAT INTEL // SOAR</div>
+          </div>
+        </a>
+
+        <!-- Global Threat Posture (DEFCON Widget) -->
+        <div class="d-none d-md-flex align-items-center ms-3">
+          <div class="defcon-widget defcon-1" id="defcon-gauge">
+            <i class="bi bi-radioactive"></i>
+            <span id="defcon-label">DEFCON 1 - CRITICAL ATTACK ACTIVE</span>
+          </div>
+        </div>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#socNavContent">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="socNavContent">
+          <!-- Main Views Nav Pills -->
+          <ul class="nav nav-pills ms-xl-4 my-2 my-xl-0" id="mainTab" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active btn-sm" id="nav-canvas-tab" data-bs-toggle="pill" data-bs-target="#tab-canvas" type="button" role="tab">
+                <i class="bi bi-diagram-3-fill me-1"></i> Attack Graph Canvas
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link btn-sm" id="nav-timeline-tab" data-bs-toggle="pill" data-bs-target="#tab-timeline" type="button" role="tab" onclick="loadForensicTimeline()">
+                <i class="bi bi-clock-history me-1"></i> Forensic Timeline
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link btn-sm" id="nav-mitre-tab" data-bs-toggle="pill" data-bs-target="#tab-mitre" type="button" role="tab" onclick="fetchMitreMatrix()">
+                <i class="bi bi-grid-3x3-gap-fill me-1"></i> MITRE Matrix
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link btn-sm" id="nav-rules-tab" data-bs-toggle="pill" data-bs-target="#tab-rules" type="button" role="tab" onclick="fetchRules()">
+                <i class="bi bi-file-earmark-code-fill me-1"></i> Detection Rules
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link btn-sm" id="nav-sandbox-tab" data-bs-toggle="pill" data-bs-target="#tab-sandbox" type="button" role="tab">
+                <i class="bi bi-terminal-fill me-1"></i> Sigma Sandbox
+              </button>
+            </li>
+          </ul>
+
+          <!-- Right Action Cluster -->
+          <div class="d-flex align-items-center gap-2 ms-auto">
+            <!-- Pipeline Indicator -->
+            <div class="d-none d-xxl-flex align-items-center gap-2 px-2 py-1 rounded bg-dark border border-secondary text-success small font-monospace">
+              <span class="soc-pulse"></span>
+              <span style="font-size: 0.72rem;">INGEST: ACTIVE (0.2ms)</span>
+            </div>
+
+            <!-- Ingest Custom Telemetry Button -->
+            <button class="btn btn-outline-info btn-sm d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#customIngestModal">
+              <i class="bi bi-plus-circle"></i> Ingest Log
+            </button>
+
+            <!-- Adversary Simulation Button -->
+            <button class="btn btn-danger btn-sm d-flex align-items-center gap-1 shadow-sm" data-bs-toggle="modal" data-bs-target="#simModal">
+              <i class="bi bi-play-circle-fill"></i> Simulate Adversary Attack
+            </button>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Main Container -->
+  <main class="container-fluid py-3 px-lg-4">
+
+    <!-- Top Operational Metrics Row -->
+    <section class="row g-3 mb-3" aria-label="Key SOC Metrics">
+      <div class="col-12 col-sm-6 col-xl-3">
+        <div class="card soc-card p-3 shadow-sm h-100">
+          <div class="text-secondary small text-uppercase fw-semibold">Telemetry Ingested</div>
+          <div class="soc-stat-val text-info" id="metric-events-count">--</div>
+          <div class="text-muted small">Normalized to OCSF / ECS Standard</div>
+        </div>
+      </div>
+      <div class="col-12 col-sm-6 col-xl-3">
+        <div class="card soc-card p-3 shadow-sm h-100">
+          <div class="text-secondary small text-uppercase fw-semibold">Correlated Attack Paths</div>
+          <div class="soc-stat-val text-danger" id="metric-incidents-count">--</div>
+          <div class="text-muted small">Multi-hop Process &amp; Network Chains</div>
+        </div>
+      </div>
+      <div class="col-12 col-sm-6 col-xl-3">
+        <div class="card soc-card p-3 shadow-sm h-100">
+          <div class="text-secondary small text-uppercase fw-semibold">MITRE ATT&amp;CK Coverage</div>
+          <div class="soc-stat-val text-warning" id="metric-mitre-count">--</div>
+          <div class="text-muted small">Active Adversary Techniques Mapped</div>
+        </div>
+      </div>
+      <div class="col-12 col-sm-6 col-xl-3">
+        <div class="card soc-card p-3 shadow-sm h-100">
+          <div class="text-secondary small text-uppercase fw-semibold">Autonomous Containments</div>
+          <div class="soc-stat-val text-success" id="metric-contained-count">--</div>
+          <div class="text-muted small">Hosts Isolated &amp; C2 Blocked via SOAR</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB CONTENTS -->
+    <div class="tab-content" id="mainTabContent">
+
+      <!-- ==========================================
+           TAB 1: ATTACK GRAPH INVESTIGATION CANVAS
+           ========================================== -->
+      <div class="tab-pane fade show active" id="tab-canvas" role="tabpanel">
+        <div class="row g-3">
+          
+          <!-- LEFT COLUMN: Correlated Incidents List (Col 3) -->
+          <aside class="col-12 col-lg-3">
+            <div class="card soc-card h-100 shadow-sm d-flex flex-column" style="min-height: 660px;">
+              <div class="card-header bg-dark d-flex align-items-center justify-content-between py-2 border-secondary">
+                <span class="small fw-bold text-uppercase text-secondary">
+                  <i class="bi bi-shield-exclamation text-danger me-1"></i> Correlated Incidents
+                </span>
+                <span class="badge bg-secondary rounded-pill" id="incident-count-badge">0</span>
+              </div>
+              
+              <!-- Quick Search Filter -->
+              <div class="p-2 border-bottom border-secondary bg-dark bg-opacity-50">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text bg-transparent border-secondary text-secondary">
+                    <i class="bi bi-search"></i>
+                  </span>
+                  <input type="text" class="form-control bg-transparent border-secondary text-white" id="filter-incident-input" placeholder="Search host, ID, or tactic..." onkeyup="filterIncidents()">
+                </div>
+              </div>
+
+              <!-- List Container -->
+              <div class="card-body p-2 overflow-auto flex-grow-1" id="incidents-list-container" style="max-height: 580px;">
+                <div class="text-center text-secondary py-5">
+                  <div class="spinner-border spinner-border-sm text-info mb-2" role="status"></div>
+                  <div>Loading Correlated Incidents...</div>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <!-- CENTER COLUMN: Interactive Attack Path Graph (Col 6) -->
+          <article class="col-12 col-lg-6">
+            <div class="card soc-card h-100 shadow-sm d-flex flex-column">
+              <div class="card-header bg-dark d-flex flex-wrap align-items-center justify-content-between py-2 border-secondary gap-2">
+                <div class="small fw-bold text-uppercase text-secondary">
+                  <i class="bi bi-bezier2 text-info me-1"></i> Attack Path Provenance Canvas
+                </div>
+
+                <!-- Controls & Filters -->
+                <div class="d-flex flex-wrap align-items-center gap-1">
+                  <!-- Canvas Filter Buttons -->
+                  <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-outline-secondary btn-sm active" id="filter-btn-all" onclick="filterGraphNodes('all')">All</button>
+                    <button class="btn btn-outline-danger btn-sm" id="filter-btn-crit" onclick="filterGraphNodes('critical')">Critical Only</button>
+                    <button class="btn btn-outline-warning btn-sm" id="filter-btn-net" onclick="filterGraphNodes('network')">C2 Egress</button>
+                  </div>
+
+                  <!-- Graph Tools -->
+                  <div class="btn-group btn-group-sm ms-1">
+                    <button class="btn btn-outline-info btn-sm" onclick="cyFit()" title="Fit View to Screen">
+                      <i class="bi bi-arrows-fullscreen"></i>
+                    </button>
+                    <button class="btn btn-outline-info btn-sm" onclick="cyResetLayout()" title="Organize Layout">
+                      <i class="bi bi-shuffle"></i>
+                    </button>
+                    <button class="btn btn-outline-success btn-sm" onclick="exportGraphSnapshot()" title="Export PNG Snapshot">
+                      <i class="bi bi-camera-fill"></i> Snapshot
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Cytoscape Container -->
+              <div class="card-body p-2 position-relative bg-dark bg-opacity-25 flex-grow-1">
+                <div id="cy-canvas"></div>
+              </div>
+
+              <!-- Graph Legend -->
+              <div class="card-footer bg-dark border-secondary py-2 d-flex flex-wrap align-items-center justify-content-between small text-secondary">
+                <span class="fw-bold text-white">Legend:</span>
+                <span class="d-flex align-items-center gap-1"><span class="badge bg-primary">&nbsp;</span> Process</span>
+                <span class="d-flex align-items-center gap-1"><span class="badge bg-warning">&nbsp;</span> Network / C2</span>
+                <span class="d-flex align-items-center gap-1"><span class="badge bg-purple">&nbsp;</span> File Artifact</span>
+                <span class="d-flex align-items-center gap-1"><span class="badge bg-danger">&nbsp;</span> Malicious Alert</span>
+                <span class="text-muted ms-auto" style="font-size: 0.68rem;">Click node to highlight Blast Radius</span>
+              </div>
+            </div>
+          </article>
+
+          <!-- RIGHT COLUMN: Entity Inspector, Threat Intel, SOAR & Notes (Col 3) -->
+          <aside class="col-12 col-lg-3">
+            <div class="card soc-card h-100 shadow-sm d-flex flex-column">
+              <!-- Right Panel Tabs -->
+              <ul class="nav nav-tabs card-header-tabs px-2 pt-2 bg-dark border-secondary" id="rightTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active small py-1 px-2 text-secondary" id="tab-inspect-btn" data-bs-toggle="tab" data-bs-target="#tab-inspect" type="button" role="tab">
+                    <i class="bi bi-search me-1"></i> Inspector
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link small py-1 px-2 text-secondary" id="tab-soar-btn" data-bs-toggle="tab" data-bs-target="#tab-soar" type="button" role="tab">
+                    <i class="bi bi-lightning-charge-fill text-warning me-1"></i> SOAR Defense
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link small py-1 px-2 text-secondary" id="tab-notes-btn" data-bs-toggle="tab" data-bs-target="#tab-notes" type="button" role="tab">
+                    <i class="bi bi-journal-text text-info me-1"></i> Notes
+                  </button>
+                </li>
+              </ul>
+
+              <div class="tab-content card-body p-3 overflow-auto flex-grow-1" id="rightTabContent" style="max-height: 560px;">
+                
+                <!-- Subtab 1: Entity Inspector & Threat Intel -->
+                <div class="tab-pane fade show active" id="tab-inspect" role="tabpanel">
+                  <div id="inspector-placeholder" class="text-center text-secondary py-5">
+                    <i class="bi bi-cursor-fill fs-2 text-info opacity-50 mb-2 d-block"></i>
+                    <p class="small">Click any node in the canvas to inspect its security context, threat intelligence, and parent-child blast radius.</p>
+                  </div>
+
+                  <div id="inspector-content" style="display: none;">
+                    <div class="mb-2">
+                      <label class="small text-secondary text-uppercase fw-bold">Selected Entity</label>
+                      <div class="p-2 rounded bg-black border border-secondary text-info fw-bold font-monospace small" id="inspect-label">--</div>
+                    </div>
+
+                    <div class="mb-2">
+                      <label class="small text-secondary text-uppercase fw-bold">Calculated Risk &amp; Severity</label>
+                      <div class="p-2 rounded bg-black border border-secondary small" id="inspect-risk">--</div>
+                    </div>
+
+                    <!-- Dynamic Threat Intel Card (Visible for network/IP nodes) -->
+                    <div class="mb-2 d-none" id="inspect-intel-container">
+                      <label class="small text-secondary text-uppercase fw-bold text-warning d-flex align-items-center gap-1">
+                        <i class="bi bi-shield-shaded"></i> Threat Intelligence Dossier
+                      </label>
+                      <div class="intel-card" id="inspect-intel-body">
+                        <!-- Rendered via JS -->
+                      </div>
+                    </div>
+
+                    <div class="mb-2">
+                      <label class="small text-secondary text-uppercase fw-bold">Command-Line / Target Detail</label>
+                      <div class="p-2 rounded bg-black border border-secondary font-monospace small text-break" style="max-height: 110px; overflow-y: auto;" id="inspect-command">--</div>
+                    </div>
+
+                    <div class="mb-2">
+                      <label class="small text-secondary text-uppercase fw-bold">Identity &amp; Host Context</label>
+                      <div class="p-2 rounded bg-black border border-secondary font-monospace small" id="inspect-context">--</div>
+                    </div>
+
+                    <div class="mb-2">
+                      <label class="small text-secondary text-uppercase fw-bold">MITRE ATT&amp;CK Techniques</label>
+                      <div class="d-flex flex-wrap gap-1 mt-1" id="inspect-mitre-badges"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Subtab 2: SOAR Autonomous Defense -->
+                <div class="tab-pane fade" id="tab-soar" role="tabpanel">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="small fw-bold text-uppercase text-secondary">Autonomous Response</span>
+                    <div class="btn-group btn-group-sm">
+                      <button class="btn btn-outline-info btn-sm py-0 px-2 small" onclick="openIncidentReportModal()" title="Export Incident Triage Document">
+                        <i class="bi bi-file-earmark-text"></i> Report
+                      </button>
+                      <button class="btn btn-outline-warning btn-sm py-0 px-2 small" onclick="openIocModal()" title="Export IOCs in STIX 2.1">
+                        <i class="bi bi-box-arrow-up-right"></i> IOCs
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Playbook 1: Ransomware Rapid Containment -->
+                  <div class="p-2 mb-2 rounded bg-dark border border-danger border-opacity-50">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                      <span class="fw-bold small text-white">Ransomware Anti-Impact Protocol</span>
+                      <span class="badge bg-danger">CRITICAL</span>
+                    </div>
+                    <p class="text-secondary small mb-2" style="font-size: 0.72rem;">
+                      Isolates host boundary via firewall, kills ransomware process tree, and invalidates compromised user credentials.
+                    </p>
+                    <button class="btn btn-danger btn-sm w-100 d-flex align-items-center justify-content-center gap-1" onclick="executeCurrentPlaybook('Ransomware Rapid Containment')">
+                      <i class="bi bi-shield-slash-fill"></i> Execute Containment Protocol
+                    </button>
+                  </div>
+
+                  <!-- Playbook 2: C2 Beaconing Containment -->
+                  <div class="p-2 mb-2 rounded bg-dark border border-warning border-opacity-50">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                      <span class="fw-bold small text-white">C2 Egress Severing Protocol</span>
+                      <span class="badge bg-warning text-dark">HIGH</span>
+                    </div>
+                    <p class="text-secondary small mb-2" style="font-size: 0.72rem;">
+                      Pushes remote C2 IP to BGP Blackhole, injects DNS sinkhole, and kills beaconing payload shell.
+                    </p>
+                    <button class="btn btn-warning btn-sm w-100 d-flex align-items-center justify-content-center gap-1 text-dark fw-semibold" onclick="executeCurrentPlaybook('C2 Beacon Containment')">
+                      <i class="bi bi-wifi-off"></i> Sever C2 Infrastructure
+                    </button>
+                  </div>
+
+                  <!-- Granular Containment Action Buttons -->
+                  <div class="mt-3">
+                    <label class="small text-secondary text-uppercase fw-bold mb-1">Granular Manual Containment</label>
+                    <div class="btn-group-vertical w-100 gap-1">
+                      <button class="btn btn-outline-danger btn-sm text-start" onclick="executeGranularAction('isolate_host')">
+                        <i class="bi bi-pc-display-horizontal me-1"></i> Isolate Host Boundary
+                      </button>
+                      <button class="btn btn-outline-warning btn-sm text-start" onclick="executeGranularAction('block_ip')">
+                        <i class="bi bi-ban me-1"></i> Blacklist Remote IP at Edge
+                      </button>
+                      <button class="btn btn-outline-info btn-sm text-start" onclick="executeGranularAction('revoke_user')">
+                        <i class="bi bi-person-x-fill me-1"></i> Invalidate Compromised User Token
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Live SOAR Terminal Execution Feed -->
+                  <div class="mt-3">
+                    <label class="small text-secondary text-uppercase fw-bold mb-1">Action Audit Trail Log</label>
+                    <div class="soc-terminal-box" id="soar-execution-log">
+                      [SYSTEM READY] SOAR Orchestrator online. Awaiting incident trigger...
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Subtab 3: Analyst Notes & Incident Lifecycle -->
+                <div class="tab-pane fade" id="tab-notes" role="tabpanel">
+                  <div class="mb-3">
+                    <label class="small text-secondary text-uppercase fw-bold">Incident Lifecycle State</label>
+                    <select class="form-select form-select-sm bg-black border-secondary text-white" id="incident-status-select" onchange="updateIncidentLifecycle()">
+                      <option value="ACTIVE">ACTIVE (Triage Required)</option>
+                      <option value="INVESTIGATING">INVESTIGATING (Forensic Deep Dive)</option>
+                      <option value="CONTAINED">CONTAINED (Mitigation Enforced)</option>
+                      <option value="CLOSED">CLOSED (Resolved &amp; Remediated)</option>
+                    </select>
+                  </div>
+
+                  <div class="mb-2">
+                    <label class="small text-secondary text-uppercase fw-bold">Add Investigation Note</label>
+                    <textarea class="form-control form-control-sm bg-black border-secondary text-white" id="note-input" rows="2" placeholder="e.g. Investigated PowerShell beacon, confirmed Word macro execution..."></textarea>
+                    <button class="btn btn-outline-info btn-sm w-100 mt-2" onclick="submitAnalystNote()">
+                      <i class="bi bi-pencil-square"></i> Save Note to Incident Log
+                    </button>
+                  </div>
+
+                  <label class="small text-secondary text-uppercase fw-bold mt-2 mb-1">Investigation Timeline Log</label>
+                  <div class="p-2 rounded bg-black border border-secondary" style="max-height: 220px; overflow-y: auto;" id="analyst-notes-container">
+                    <div class="text-secondary small text-center py-3">No analyst notes recorded yet.</div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </aside>
+
+        </div>
+      </div>
+
+      <!-- ==========================================
+           TAB 2: FORENSIC CHRONOLOGICAL TIMELINE
+           ========================================== -->
+      <div class="tab-pane fade" id="tab-timeline" role="tabpanel">
+        <div class="card soc-card shadow-sm">
+          <div class="card-header bg-dark d-flex justify-content-between align-items-center py-2 border-secondary">
+            <div>
+              <span class="fw-bold text-white small text-uppercase">
+                <i class="bi bi-clock-history text-info me-1"></i> Forensic Chronological Event Explorer
+              </span>
+              <span class="text-secondary small ms-2">Real-time normalized OCSF / ECS event sequence</span>
+            </div>
+            <button class="btn btn-outline-info btn-sm" onclick="loadForensicTimeline()">
+              <i class="bi bi-arrow-clockwise"></i> Refresh Timeline
+            </button>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-soc table-sm align-middle mb-0">
+                <thead class="bg-black text-secondary small text-uppercase">
+                  <tr>
+                    <th scope="col" style="width: 140px;">Timestamp</th>
+                    <th scope="col" style="width: 100px;">Event Type</th>
+                    <th scope="col" style="width: 130px;">Host &amp; IP</th>
+                    <th scope="col" style="width: 140px;">Identity / User</th>
+                    <th scope="col">Entity / Command Details</th>
+                  </tr>
+                </thead>
+                <tbody id="timeline-table-body" class="small">
+                  <tr>
+                    <td colspan="5" class="text-center text-secondary py-4">Loading forensic event stream...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==========================================
+           TAB 3: MITRE ATT&CK ENTERPRISE MATRIX
+           ========================================== -->
+      <div class="tab-pane fade" id="tab-mitre" role="tabpanel">
+        <div class="card soc-card shadow-sm">
+          <div class="card-header bg-dark d-flex justify-content-between align-items-center py-2 border-secondary">
+            <div>
+              <span class="fw-bold text-white small text-uppercase">
+                <i class="bi bi-grid-3x3-gap-fill text-warning me-1"></i> MITRE ATT&amp;CK Enterprise Detection Matrix
+              </span>
+              <span class="text-secondary small ms-2">Real-time Adversary Tactic &amp; Technique Coverage</span>
+            </div>
+            <button class="btn btn-outline-secondary btn-sm" onclick="fetchMitreMatrix()">
+              <i class="bi bi-arrow-clockwise"></i> Refresh Matrix
+            </button>
+          </div>
+          <div class="card-body p-3">
+            <div class="row g-3" id="mitre-matrix-grid">
+              <!-- Rendered via JavaScript -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==========================================
+           TAB 4: SIGMA DETECTION RULES REPOSITORY
+           ========================================== -->
+      <div class="tab-pane fade" id="tab-rules" role="tabpanel">
+        <div class="card soc-card shadow-sm">
+          <div class="card-header bg-dark d-flex justify-content-between align-items-center py-2 border-secondary">
+            <div>
+              <span class="fw-bold text-white small text-uppercase">
+                <i class="bi bi-file-earmark-code-fill text-info me-1"></i> Loaded Sigma Detection Rules
+              </span>
+              <span class="text-secondary small ms-2">Active behavioral detection signatures compiled in memory</span>
+            </div>
+            <button class="btn btn-outline-secondary btn-sm" onclick="fetchRules()">
+              <i class="bi bi-arrow-clockwise"></i> Refresh Rules
+            </button>
+          </div>
+          <div class="card-body p-3">
+            <div class="row g-3" id="rules-matrix-grid">
+              <!-- Rendered via JavaScript -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==========================================
+           TAB 5: SIGMA RULE SANDBOX & LIVE COMPILER (NEW!)
+           ========================================== -->
+      <div class="tab-pane fade" id="tab-sandbox" role="tabpanel">
+        <div class="row g-3">
+          <div class="col-12 col-lg-7">
+            <div class="card soc-card shadow-sm h-100">
+              <div class="card-header bg-dark d-flex justify-content-between align-items-center py-2 border-secondary">
+                <span class="small fw-bold text-uppercase text-info">
+                  <i class="bi bi-code-slash me-1"></i> Sigma Detection Rule Editor
+                </span>
+                <div class="btn-group btn-group-sm">
+                  <button class="btn btn-outline-secondary btn-sm" onclick="loadSigmaTemplate()">Load Template</button>
+                  <button class="btn btn-outline-info btn-sm" onclick="compileTestSigma()">
+                    <i class="bi bi-play-circle"></i> Validate Syntax
+                  </button>
+                </div>
+              </div>
+              <div class="card-body p-3 d-flex flex-column">
+                <div class="row g-2 mb-2">
+                  <div class="col-8">
+                    <label class="small text-secondary fw-semibold">Target Filename</label>
+                    <input type="text" class="form-control form-control-sm bg-black border-secondary text-white font-monospace" id="sandbox-filename" value="proc_custom_reconnaissance.yml">
+                  </div>
+                  <div class="col-4 d-flex align-items-end">
+                    <button class="btn btn-success btn-sm w-100 d-flex align-items-center justify-content-center gap-1" onclick="saveSigmaRule()">
+                      <i class="bi bi-save"></i> Save Rule
+                    </button>
+                  </div>
+                </div>
+                <label class="small text-secondary fw-semibold mb-1">YAML Rule Content</label>
+                <textarea class="form-control code-editor-area flex-grow-1" id="sandbox-yaml" rows="16"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-lg-5">
+            <div class="card soc-card shadow-sm h-100">
+              <div class="card-header bg-dark py-2 border-secondary">
+                <span class="small fw-bold text-uppercase text-secondary">
+                  <i class="bi bi-check2-circle text-success me-1"></i> Compilation &amp; Parsing Output
+                </span>
+              </div>
+              <div class="card-body p-3">
+                <div id="sandbox-output" class="p-3 rounded bg-black border border-secondary font-monospace small" style="min-height: 250px; white-space: pre-wrap;">
+Click 'Validate Syntax' to parse and test your custom Sigma detection rule against the compiler.
+                </div>
+
+                <div class="alert alert-dark border-secondary mt-3 small">
+                  <strong class="text-info"><i class="bi bi-info-circle me-1"></i> Detection Engineering Guide:</strong>
+                  <ul class="mb-0 ps-3 mt-1 text-secondary" style="font-size: 0.75rem;">
+                    <li>Ensure <code>detection.selection</code> maps directly to process or network telemetry fields.</li>
+                    <li>Always tag with MITRE ATT&amp;CK technique format: <code>attack.t1059.001</code>.</li>
+                    <li>Saving the rule instantly updates the active in-memory detection engine without server restart.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ==========================================================================
+       MODAL 1: ADVERSARY ATTACK SIMULATION ENGINE (1-CLICK APT DEMO)
+       ========================================================================== -->
+  <div class="modal fade" id="simModal" tabindex="-1" aria-labelledby="simModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content bg-dark border-secondary">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title fs-6 fw-bold text-white d-flex align-items-center gap-2" id="simModalLabel">
+            <i class="bi bi-cpu text-danger"></i> Adversary Emulation Engine (Atomic Red Team)
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-secondary mb-3">
+            Select an adversary kill-chain scenario to inject realistic multi-stage telemetry into the AegisGraph-SOC ingestion pipeline:
+          </p>
+
+          <!-- Scenario 1: APT29 -->
+          <div class="card p-3 mb-2 bg-black border border-secondary text-start cursor-pointer scenario-card active" id="scen-card-apt" onclick="selectScenario('apt29')">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong class="text-white small">APT29 / CozyBear Campaign</strong>
+              <span class="badge bg-danger">HIGH RISK</span>
+            </div>
+            <div class="text-secondary small mt-1" style="font-size: 0.75rem;">
+              Outlook Attachment &rarr; WINWORD.EXE &rarr; Encoded PowerShell &rarr; C2 Outbound Beaconing &rarr; LSASS In-Memory Dump via Procdump.
+            </div>
+          </div>
+
+          <!-- Scenario 2: Ransomware -->
+          <div class="card p-3 mb-2 bg-black border border-secondary text-start cursor-pointer scenario-card" id="scen-card-ransom" onclick="selectScenario('ransomware')">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong class="text-white small">BlackCat / ALPHV Ransomware Rapid Kill Chain</strong>
+              <span class="badge bg-danger">CRITICAL</span>
+            </div>
+            <div class="text-secondary small mt-1" style="font-size: 0.75rem;">
+              Exploit Execution &rarr; Volume Shadow Copy Deletion (vssadmin) &rarr; Multi-threaded File Encryption (.locked shares).
+            </div>
+          </div>
+
+          <!-- Scenario 3: Lateral Movement -->
+          <div class="card p-3 mb-2 bg-black border border-secondary text-start cursor-pointer scenario-card" id="scen-card-lateral" onclick="selectScenario('lateral')">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong class="text-white small">Active Directory Lateral Movement (PsExec)</strong>
+              <span class="badge bg-warning text-dark">HIGH RISK</span>
+            </div>
+            <div class="text-secondary small mt-1" style="font-size: 0.75rem;">
+              Compromised Workstation &rarr; PsExec Service Creation &rarr; SMB Connection (Port 445) to Domain Controller &rarr; Privileged Execution.
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger btn-sm" id="btn-launch-sim" onclick="launchSelectedSimulation()">
+            <i class="bi bi-play-fill"></i> Execute Emulation Campaign
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 2: CUSTOM RAW TELEMETRY INGESTION MODAL
+       ========================================================================== -->
+  <div class="modal fade" id="customIngestModal" tabindex="-1" aria-labelledby="customIngestModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content bg-dark border-secondary">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title fs-6 fw-bold text-white d-flex align-items-center gap-2" id="customIngestModalLabel">
+            <i class="bi bi-plus-circle text-info"></i> Ingest Custom Event Telemetry
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="small text-secondary fw-semibold">Event Type</label>
+            <select class="form-select form-select-sm bg-black border-secondary text-white" id="ingest-type" onchange="toggleIngestFields()">
+              <option value="process_creation">Process Creation</option>
+              <option value="network_connection">Network Outbound Connection</option>
+              <option value="file_modification">File Modification</option>
+            </select>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="small text-secondary fw-semibold">Host Name</label>
+              <input type="text" class="form-control form-control-sm bg-black border-secondary text-white" id="ingest-host" value="CORP-SEC-WS02">
+            </div>
+            <div class="col-6">
+              <label class="small text-secondary fw-semibold">Host IP</label>
+              <input type="text" class="form-control form-control-sm bg-black border-secondary text-white" id="ingest-ip" value="192.168.1.105">
+            </div>
+          </div>
+          <div class="mb-2" id="ingest-group-proc">
+            <label class="small text-secondary fw-semibold">Process Command-Line</label>
+            <input type="text" class="form-control form-control-sm bg-black border-secondary text-white font-monospace" id="ingest-cmd" value="powershell.exe -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBi...">
+          </div>
+          <div class="mb-2 d-none" id="ingest-group-net">
+            <label class="small text-secondary fw-semibold">Remote Destination IP</label>
+            <input type="text" class="form-control form-control-sm bg-black border-secondary text-white font-monospace" id="ingest-dest-ip" value="185.220.101.5">
+          </div>
+          <div class="mb-2 d-none" id="ingest-group-file">
+            <label class="small text-secondary fw-semibold">Target File Path</label>
+            <input type="text" class="form-control form-control-sm bg-black border-secondary text-white font-monospace" id="ingest-file-path" value="C:\Users\Public\finance_confidential.xlsx.locked">
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-info btn-sm text-black fw-bold" onclick="submitCustomEvent()">
+            <i class="bi bi-box-arrow-in-down"></i> Ingest &amp; Correlate
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 3: INCIDENT FORENSIC INVESTIGATION REPORT MODAL
+       ========================================================================== -->
+  <div class="modal fade" id="reportModal" tabindex="-1" aria-labelledby="reportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content bg-dark border-secondary">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title fs-6 fw-bold text-white d-flex align-items-center gap-2" id="reportModalLabel">
+            <i class="bi bi-file-earmark-medical text-info"></i> SOC Incident Triage &amp; Forensic Report
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-3">
+          <div class="report-paper" id="report-content-body">Loading incident triage report...</div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-outline-info btn-sm" onclick="copyReportMarkdown()">
+            <i class="bi bi-clipboard"></i> Copy Markdown
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 4: STIX 2.1 & JSON IOC EXPORT HUB (NEW!)
+       ========================================================================== -->
+  <div class="modal fade" id="iocModal" tabindex="-1" aria-labelledby="iocModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content bg-dark border-secondary">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title fs-6 fw-bold text-white d-flex align-items-center gap-2" id="iocModalLabel">
+            <i class="bi bi-box-arrow-up-right text-warning"></i> Indicators of Compromise (IOC) Export Hub
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="small text-secondary">Export format:</span>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-info btn-sm active" id="ioc-format-json" onclick="switchIocFormat('json')">Standard JSON</button>
+              <button class="btn btn-outline-info btn-sm" id="ioc-format-stix" onclick="switchIocFormat('stix')">STIX 2.1 Bundle</button>
+            </div>
+          </div>
+          <textarea class="form-control font-monospace small bg-black text-warning border-secondary" id="ioc-content-body" rows="14" readonly></textarea>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-outline-warning btn-sm" onclick="copyIocContent()">
+            <i class="bi bi-clipboard"></i> Copy IOCs
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Hub -->
+  <div class="toast-container soc-toast-container" id="toastContainer"></div>
+
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Application Logic -->
+  <script src="js/app.js"></script>
+</body>
+</html>
