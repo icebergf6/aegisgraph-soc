@@ -90,6 +90,18 @@
               <span style="font-size: 0.72rem;">INGEST: ACTIVE (0.2ms)</span>
             </div>
 
+            <!-- Live Host Sensor Hub Button -->
+            <button class="btn btn-outline-success btn-sm d-flex align-items-center gap-1 shadow-sm" data-bs-toggle="modal" data-bs-target="#liveSensorModal" title="Real-Time Host Telemetry & Sensor Controls">
+              <span class="pulse-green"></span>
+              <span class="d-none d-md-inline">Live Sensor</span>
+            </button>
+
+            <!-- Live Auto-Sync Switch -->
+            <div class="form-check form-switch text-light small d-none d-lg-flex align-items-center mb-0 gap-1 ms-1" title="Real-time continuous sync every 2.5s">
+              <input class="form-check-input" type="checkbox" id="liveSyncSwitch" checked onchange="toggleLiveSync()">
+              <label class="form-check-label small text-info font-monospace" for="liveSyncSwitch" style="font-size:0.72rem;">SYNC</label>
+            </div>
+
             <!-- Ingest Custom Telemetry Button -->
             <button class="btn btn-outline-info btn-sm d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#customIngestModal">
               <i class="bi bi-plus-circle"></i> Ingest Log
@@ -714,6 +726,99 @@ Click 'Validate Syntax' to parse and test your custom Sigma detection rule again
           <button type="button" class="btn btn-outline-warning btn-sm" onclick="copyIocContent()">
             <i class="bi bi-clipboard"></i> Copy IOCs
           </button>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  <!-- ==========================================================================
+       MODAL 5: LIVE ENDPOINT SENSOR & REAL-TIME EDR TELEMETRY HUB (NEW!)
+       ========================================================================== -->
+  <div class="modal fade" id="liveSensorModal" tabindex="-1" aria-labelledby="liveSensorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content bg-dark border-secondary">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title fs-6 fw-bold text-white d-flex align-items-center gap-2" id="liveSensorModalLabel">
+            <span class="pulse-green"></span>
+            <i class="bi bi-shield-shaded text-success"></i> Live Endpoint Host Sensor &amp; Telemetry Hub
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4">
+          <!-- Architecture Flow Banner -->
+          <div class="live-sensor-box mb-4">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+              <span class="text-success fw-bold small text-uppercase font-monospace">
+                <i class="bi bi-broadcast me-1"></i> Continuous Sensor Pipeline Active
+              </span>
+              <span class="badge bg-success font-monospace" style="font-size: 0.72rem;">STATUS: ARMED</span>
+            </div>
+            <p class="text-secondary small mb-2">
+              AegisGraph-SOC features a production-ready, lightweight host sensor agent (<code>agent/live_collector.py</code>) that continuously intercepts real Windows processes, command-line flags, and outbound TCP sockets, streaming OCSF-compliant telemetries directly into our Sigma detection engine.
+            </p>
+            <div class="p-2 rounded bg-black border border-secondary font-monospace small text-info d-flex align-items-center justify-content-between">
+              <code>python agent/live_collector.py</code>
+              <button class="btn btn-sm btn-outline-info" onclick="copyLiveAgentCommand()">
+                <i class="bi bi-clipboard me-1"></i> Copy
+              </button>
+            </div>
+          </div>
+
+          <!-- Real-Time Interactive Test Injections -->
+          <div class="card soc-card p-3 border-secondary mb-3">
+            <h6 class="text-white fw-bold small mb-2 d-flex align-items-center gap-2">
+              <i class="bi bi-lightning-charge-fill text-warning"></i>
+              One-Click Live Sensor Injections (Immediate Real-Time Trigger)
+            </h6>
+            <p class="text-secondary small mb-3">
+              Click any button below to instantly transmit a live telemetry event through the real-time ingestion pipeline and watch the graph &amp; DEFCON react dynamically:
+            </p>
+            <div class="row g-2">
+              <div class="col-12 col-md-6">
+                <button class="btn btn-outline-danger btn-sm w-100 text-start d-flex align-items-center justify-content-between p-2" onclick="injectLiveTest('powershell')">
+                  <div>
+                    <strong class="d-block text-white small">Encoded PowerShell</strong>
+                    <span class="text-secondary" style="font-size: 0.68rem;">T1059.001 (SIGMA-001)</span>
+                  </div>
+                  <i class="bi bi-play-circle text-danger fs-5"></i>
+                </button>
+              </div>
+              <div class="col-12 col-md-6">
+                <button class="btn btn-outline-danger btn-sm w-100 text-start d-flex align-items-center justify-content-between p-2" onclick="injectLiveTest('vssadmin')">
+                  <div>
+                    <strong class="d-block text-white small">VSSAdmin Shadow Delete</strong>
+                    <span class="text-secondary" style="font-size: 0.68rem;">T1490 (SIGMA-002)</span>
+                  </div>
+                  <i class="bi bi-play-circle text-danger fs-5"></i>
+                </button>
+              </div>
+              <div class="col-12 col-md-6">
+                <button class="btn btn-outline-warning btn-sm w-100 text-start d-flex align-items-center justify-content-between p-2" onclick="injectLiveTest('c2')">
+                  <div>
+                    <strong class="d-block text-white small">Malicious C2 Beacon</strong>
+                    <span class="text-secondary" style="font-size: 0.68rem;">T1071.001 (SIGMA-004)</span>
+                  </div>
+                  <i class="bi bi-play-circle text-warning fs-5"></i>
+                </button>
+              </div>
+              <div class="col-12 col-md-6">
+                <button class="btn btn-outline-success btn-sm w-100 text-start d-flex align-items-center justify-content-between p-2" onclick="injectLiveTest('benign')">
+                  <div>
+                    <strong class="d-block text-white small">Benign Browser Spawn</strong>
+                    <span class="text-secondary" style="font-size: 0.68rem;">Normal Process Ingestion</span>
+                  </div>
+                  <i class="bi bi-play-circle text-success fs-5"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Connection Status Table -->
+          <div class="d-flex justify-content-between align-items-center text-secondary small font-monospace pt-2 border-top border-secondary">
+            <span><i class="bi bi-hdd-network text-info me-1"></i> Sensor Endpoint: <code>/api/v1/telemetry/process</code></span>
+            <span><i class="bi bi-cpu text-success me-1"></i> Correlator: <code>ACTIVE</code></span>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
         </div>
       </div>

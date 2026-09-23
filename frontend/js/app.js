@@ -18,6 +18,10 @@ let currentIocFormat = 'json';
 let incidentsCache = [];
 let rawReportMarkdown = "";
 let isOfflineMode = false;
+let liveSyncActive = true;
+let liveSyncIntervalId = null;
+let previousTelemetryCount = 0;
+let previousAlertCount = 0;
 
 // ============================================================================
 // CLIENT-SIDE FALLBACK DATABASE (Ensures 100% functionality on Netlify hosting)
@@ -154,7 +158,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadForensicTimeline();
   loadSigmaTemplate();
 
-  setInterval(fetchStatus, 8000);
+  startLiveSyncCycle();
 });
 
 // Check whether running against live FastAPI or Netlify Static Mode
@@ -526,6 +530,25 @@ async function refreshAll() {
   await fetchIncidents();
 }
 
+function updateMetricsUI(data) {
+  if (!data) return;
+  const evCount = document.getElementById('metric-events-count');
+  const incCount = document.getElementById('metric-incidents-count');
+  const mitreCount = document.getElementById('metric-mitre-count');
+  const contCount = document.getElementById('metric-contained-count');
+  if (evCount) evCount.innerText = data.total_telemetry_events;
+  if (incCount) incCount.innerText = data.total_incidents;
+  if (mitreCount) mitreCount.innerText = (data.critical_incidents || 0) + (data.high_incidents || 0);
+  if (contCount) contCount.innerText = data.contained_incidents || 0;
+
+  const defconGauge = document.getElementById('defcon-gauge');
+  const defconLabel = document.getElementById('defcon-label');
+  if (defconGauge && defconLabel) {
+    defconGauge.className = `defcon-widget defcon-${data.defcon || 1}`;
+    defconLabel.innerText = data.defcon_label || `DEFCON ${data.defcon}`;
+  }
+}
+
 async function fetchStatus() {
   try {
     let data;
@@ -535,21 +558,13 @@ async function fetchStatus() {
       const res = await fetch('/api/status');
       data = await res.json();
     }
-
-    document.getElementById('metric-events-count').innerText = data.total_telemetry_events;
-    document.getElementById('metric-incidents-count').innerText = data.total_incidents;
-    document.getElementById('metric-mitre-count').innerText = data.critical_incidents + data.high_incidents;
-    document.getElementById('metric-contained-count').innerText = data.contained_incidents;
-
-    const defconGauge = document.getElementById('defcon-gauge');
-    const defconLabel = document.getElementById('defcon-label');
-    if (defconGauge && defconLabel) {
-      defconGauge.className = `defcon-widget defcon-${data.defcon || 1}`;
-      defconLabel.innerText = data.defcon_label || `DEFCON ${data.defcon}`;
-    }
+    updateMetricsUI(data);
+    return data;
   } catch (err) {
     console.warn('Status fetch error, falling back to local database:', err);
     isOfflineMode = true;
+    updateMetricsUI(FALLBACK_DB.status);
+    return FALLBACK_DB.status;
   }
 }
 
@@ -1415,4 +1430,190 @@ function showSocToast(message, type = 'info') {
   toastEl.addEventListener('hidden.bs.toast', () => {
     toastEl.remove();
   });
+}
+
+// ============================================================================
+// REAL-TIME CONTINUOUS SENSOR SYNC ENGINE & LIVE TESTING HANDLERS (NEW!)
+// ============================================================================
+
+function startLiveSyncCycle() {
+  if (liveSyncIntervalId) clearInterval(liveSyncIntervalId);
+  liveSyncIntervalId = setInterval(autoSyncCycle, 2500);
+}
+
+function toggleLiveSync() {
+  const switchEl = document.getElementById('liveSyncSwitch');
+  liveSyncActive = switchEl ? switchEl.checked : !liveSyncActive;
+  if (liveSyncActive) {
+    startLiveSyncCycle();
+    showSocToast('Live Telemetry Stream Sync: ENABLED (2.5s)', 'success');
+  } else {
+    if (liveSyncIntervalId) clearInterval(liveSyncIntervalId);
+    showSocToast('Live Telemetry Stream Sync: PAUSED', 'info');
+  }
+}
+
+async function autoSyncCycle() {
+  if (!liveSyncActive) return;
+  try {
+    let data;
+    if (isOfflineMode) {
+      data = FALLBACK_DB.status;
+    } else {
+      const res = await fetch('/api/status');
+      if (!res.ok) return;
+      data = await res.json();
+    }
+
+    if (!data) return;
+
+    // Detect if new events or alerts have arrived
+    const hasNewEvents = previousTelemetryCount > 0 && data.total_telemetry_events > previousTelemetryCount;
+    const hasNewAlerts = previousAlertCount > 0 && data.total_alerts > previousAlertCount;
+
+    previousTelemetryCount = data.total_telemetry_events;
+    previousAlertCount = data.total_alerts;
+
+    // Update metrics & DEFCON gauge
+    updateMetricsUI(data);
+
+    if (hasNewEvents || hasNewAlerts) {
+      console.log(`[AegisGraph-SOC] Real-time sync detected ${data.total_telemetry_events} events (${data.total_alerts} alerts)`);
+      await fetchIncidents();
+      await loadForensicTimeline();
+      if (hasNewAlerts) {
+        showSocToast(`🚨 Real-time alert detected from Host Sensor! Current DEFCON: ${data.defcon}`, 'danger');
+      }
+    }
+  } catch (err) {
+    // Silent fail in background sync
+  }
+}
+
+function copyLiveAgentCommand() {
+  const cmd = 'python agent/live_collector.py';
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(cmd).then(() => {
+      showSocToast('Command copied: ' + cmd, 'success');
+    }).catch(() => {
+      prompt('Copy command manually:', cmd);
+    });
+  } else {
+    prompt('Copy command manually:', cmd);
+  }
+}
+
+async function injectLiveTest(testType) {
+  let endpoint = '/api/v1/telemetry/process';
+  let payload = {};
+  const host = "LOCAL-HOST-PC";
+  const now = new Date().toISOString();
+
+  if (testType === 'powershell') {
+    payload = {
+      event_id: 'test-' + Date.now(),
+      timestamp: now,
+      event_type: 'process_creation',
+      host_name: host,
+      host_ip: '192.168.1.15',
+      user_name: 'analyst',
+      process_id: 8840,
+      process_guid: 'proc-test-ps-' + Date.now(),
+      process_name: 'powershell.exe',
+      process_path: 'C:\\Windows\\System32\\powershell.exe',
+      command_line: 'powershell.exe -NoProfile -WindowStyle Hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQ...',
+      hashes: { sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' }
+    };
+  } else if (testType === 'vssadmin') {
+    payload = {
+      event_id: 'test-' + Date.now(),
+      timestamp: now,
+      event_type: 'process_creation',
+      host_name: host,
+      host_ip: '192.168.1.15',
+      user_name: 'NT AUTHORITY\\SYSTEM',
+      process_id: 7712,
+      process_guid: 'proc-test-vss-' + Date.now(),
+      process_name: 'vssadmin.exe',
+      process_path: 'C:\\Windows\\System32\\vssadmin.exe',
+      command_line: 'vssadmin.exe delete shadows /all /quiet',
+      hashes: {}
+    };
+  } else if (testType === 'c2') {
+    endpoint = '/api/v1/telemetry/network';
+    payload = {
+      event_id: 'test-' + Date.now(),
+      timestamp: now,
+      event_type: 'network_connection',
+      host_name: host,
+      process_id: 8840,
+      process_guid: 'proc-test-ps-' + Date.now(),
+      process_name: 'powershell.exe',
+      source_ip: '192.168.1.15',
+      source_port: 52140,
+      dest_ip: '185.220.101.5',
+      dest_port: 443,
+      protocol: 'TCP',
+      direction: 'outbound'
+    };
+  } else {
+    // Benign browser spawn
+    payload = {
+      event_id: 'test-' + Date.now(),
+      timestamp: now,
+      event_type: 'process_creation',
+      host_name: host,
+      host_ip: '192.168.1.15',
+      user_name: 'analyst',
+      process_id: 4210,
+      process_guid: 'proc-test-chrome-' + Date.now(),
+      process_name: 'chrome.exe',
+      process_path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      command_line: '"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" https://threatpost.com',
+      hashes: {}
+    };
+  }
+
+  // If in offline Netlify mode, simulate client-side injection
+  if (isOfflineMode) {
+    FALLBACK_DB.status.total_telemetry_events += 1;
+    if (testType !== 'benign') {
+      FALLBACK_DB.status.total_alerts += 1;
+      FALLBACK_DB.status.defcon = 1;
+      FALLBACK_DB.status.defcon_label = "DEFCON 1 - CRITICAL ATTACK ACTIVE";
+    }
+    FALLBACK_DB.events.unshift({
+      type: testType === 'c2' ? 'NETWORK' : 'PROCESS',
+      host: host,
+      user: payload.user_name || 'SYSTEM',
+      detail: payload.command_line || `${payload.process_name} -> ${payload.dest_ip}:${payload.dest_port}`,
+      timestamp: now
+    });
+    await refreshAll();
+    await loadForensicTimeline();
+    showSocToast(`[Netlify Engine] Live event simulated for ${payload.process_name}!`, testType === 'benign' ? 'info' : 'danger');
+    return;
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      await refreshAll();
+      await loadForensicTimeline();
+      if (data.alerts_triggered > 0) {
+        showSocToast(`🚨 LIVE DETECTED: ${data.alerts[0].rule_title} (${data.alerts[0].mitre_technique_id})`, 'danger');
+      } else {
+        showSocToast(`Event ingested successfully: ${payload.process_name}`, 'success');
+      }
+    } else {
+      showSocToast('Error injecting event: ' + res.statusText, 'danger');
+    }
+  } catch (err) {
+    showSocToast('Live injection network error: ' + err, 'danger');
+  }
 }
