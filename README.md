@@ -43,6 +43,8 @@ Traditional Security Information and Event Management (SIEM) systems suffer from
 
 | Capability | Technical Description | Business & SOC Value |
 | :--- | :--- | :--- |
+| **Real-Time Host EDR Sensor** | Python-based continuous sensor (`agent/live_collector.py`) capturing live Windows processes, hashes, & outbound sockets. | Converts your actual workstation or lab into a monitored SOC endpoint in real time. |
+| **Continuous Live Stream Sync** | 2.5s asynchronous reactive sync with navbar control switch and dynamic event reconciliation. | Live host activity and detections reflect in the console instantly without reloading. |
 | **Graph-Based Attack Correlation** | In-memory directed multigraph powered by NetworkX and visualized with Cytoscape.js. | Replaces hours of manual log stitching with an instant, interactive visual attack tree. |
 | **Interactive Blast Radius Highlighting** | Clicking any node highlights ancestors (*Cyan*) and descendants (*Red*) while dimming unrelated telemetry. | Allows Tier 2/3 analysts to isolate the exact scope of an intrusion in seconds. |
 | **Integrated Threat Intelligence** | Automatic IOC enrichment displaying ASN, country, reputation score (0-100), and threat actor attribution (*APT29, FIN7, LockBit*). | Instant context on adversary infrastructure without leaving the investigation canvas. |
@@ -58,15 +60,16 @@ Traditional Security Information and Event Management (SIEM) systems suffer from
 
 ```mermaid
 graph TD
-    subgraph Data Ingestion & Adversary Emulation
-        A1[Telemetry: Sysmon / Windows Events] --> N[OCSF / ECS Normalizer Engine]
-        A2[Telemetry: Linux Auditd & Zeek] --> N
-        SIM[Atomic Red Team Simulator: APT29 / Ransomware / Lateral] --> N
+    subgraph Data Ingestion & Live Sensor Layer
+        S1[Live Host Sensor: agent/live_collector.py] -->|POST /api/v1/telemetry/process| API[FastAPI Ingestion Engine]
+        S2[Network Sockets: TCP / UDP Egress] -->|POST /api/v1/telemetry/network| API
+        SIM[Atomic Red Team Simulator: APT29 / Ransomware / Lateral] --> API
+        UI_INJ[One-Click Web Console Injections] --> API
     end
 
     subgraph Detection & Threat Intel Engine
-        N --> DET[Sigma YAML Behavioral Rule Evaluator]
-        N --> INTEL[Threat Intelligence & IOC Enrichment Engine]
+        API --> DET[Sigma YAML Behavioral Rule Evaluator]
+        API --> INTEL[Threat Intelligence & IOC Enrichment Engine]
         DET -->|Triggered Alerts| CORR[Graph Attack Path Correlator: NetworkX]
         INTEL -->|Reputation & Actor Attribution| CORR
     end
@@ -186,7 +189,7 @@ The repository is already pre-configured with a clean `.gitignore` (excluding `v
 
 ```powershell
 # 1. Add your GitHub remote origin
-git remote add origin https://github.com/<your-username>/AegisGraph-SOC.git
+git remote add origin https://github.com/icebergf6/aegisgraph-soc.git
 
 # 2. Rename branch to main
 git branch -M main
@@ -203,6 +206,9 @@ The FastAPI backend provides comprehensive REST endpoints documented interactive
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
+| `POST`| `/api/v1/telemetry/process` | Real-time process telemetry ingestion endpoint for endpoint sensors. |
+| `POST`| `/api/v1/telemetry/network` | Real-time network socket telemetry ingestion endpoint for IDS/EDR monitors. |
+| `POST`| `/api/v1/telemetry/file` | Real-time file integrity telemetry ingestion endpoint for ransomware detection. |
 | `GET` | `/api/status` | Returns system health, event counts, and DEFCON threat posture level. |
 | `GET` | `/api/incidents` | Lists all active and contained multi-hop attack graphs. |
 | `GET` | `/api/incidents/{id}` | Returns graph nodes, relationships, and metadata for a specific incident. |
@@ -240,6 +246,8 @@ When presenting this project during a technical interview for **SOC Analyst**, *
    * Click the **"IOCs"** button and switch to the **STIX 2.1 Bundle** format. Explain how this standardized OASIS format enables automated threat intelligence sharing across ISACs and boundary firewalls.
 7. **Detection Engineering in Sigma Sandbox:**
    * Switch to the **Sigma Sandbox** tab. Write or edit a Sigma rule, click **"Validate Syntax"**, and save it to show hot-reload detection compiler capabilities.
+8. **Live Real-Time Host EDR Sensor Demo:**
+   * Click the **"Live Sensor"** button in the top navbar and click **"Encoded PowerShell (T1059.001)"**, or launch `python agent/live_collector.py` in PowerShell. Show how live processes from your computer flow directly into the graph canvas and trigger real-time detections with zero page refresh!
 
 ---
 
